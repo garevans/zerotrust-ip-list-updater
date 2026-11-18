@@ -42,6 +42,20 @@ The container stores the last known IP in:
 
 Mount this directory as a volume to persist state across restarts.
 
+The image creates `/app/data` as mode `0777`, so a new volume is writable by whichever uid runs the container. A volume that already exists keeps its own ownership. That directory has to be writable by the uid you set.
+
+---
+
+## **Running as a non-root user**
+
+The image still starts as root when `user` is unset, which existing deployments rely on. To run as another user, set `user` to a `uid:gid`. `/app/update.sh` is mode `0755`, so that user can read and execute it.
+
+```yaml
+user: "1000:999"
+```
+
+Point `/app/data` at a directory that uid can write. A volume already owned by `1000:999` is enough.
+
 ---
 
 ## **Example docker‑compose.yml**
@@ -51,9 +65,11 @@ version: "3.9"
 
 services:
   cf-ip-updater:
-    image: garevans/zerotrust-ip-list-updater:1.2
+    image: garevans/zerotrust-ip-list-updater:1.3
     container_name: cf-ip-updater
     restart: unless-stopped
+    # Optional. Leave this unset to run as root.
+    # user: "1000:999"
     environment:
       CF_API_TOKEN: "your_cloudflare_api_token"
       CF_ACCOUNT_ID: "your_account_id"
@@ -94,6 +110,16 @@ volumes:
 
 ---
 
+## **Release 1.3**
+
+Release 1.3 lets the container run as a non-root user. The default user is still root, and the update behaviour and environment variables are unchanged from 1.2.
+
+In the 1.2 image, `/app/update.sh` was mode `0771`: the file was world-executable but not world-readable, owned by root. Bash has to read a script before it can run it, so starting the container with `user: "1000:999"` failed with "Permission denied" on `/app/update.sh`. The file is now mode `0755`.
+
+`/app/data` is mode `0777`, so the process can create `/app/data/last_ip.txt` under whatever uid runs it. Root can still write that directory. A bind mount or named volume on `/app/data` replaces the image directory; use one that the chosen uid can write.
+
+---
+
 ## **Release 1.2**
 
 Release 1.2 rebases the image from Alpine 3.19 onto Alpine 3.24, the current supported stable release. The runtime behaviour and environment variables are unchanged from 1.1, so an existing deployment can move to `garevans/zerotrust-ip-list-updater:1.2` without a configuration change.
@@ -111,8 +137,8 @@ Checked at release time against `alpine:3.24`, which resolved to Alpine 3.24.3.
 Publishing to Docker Hub is manual. From a checkout of this repository:
 
 ```
-docker build -t garevans/zerotrust-ip-list-updater:1.2 -t garevans/zerotrust-ip-list-updater:latest .
-docker push garevans/zerotrust-ip-list-updater:1.2
+docker build -t garevans/zerotrust-ip-list-updater:1.3 -t garevans/zerotrust-ip-list-updater:latest .
+docker push garevans/zerotrust-ip-list-updater:1.3
 docker push garevans/zerotrust-ip-list-updater:latest
 ```
 

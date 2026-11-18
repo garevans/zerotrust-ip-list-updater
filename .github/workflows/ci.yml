@@ -22,4 +22,17 @@ jobs:
         run: shellcheck update.sh
 
       - name: Build image
-        run: docker build -t garevans/zerotrust-ip-list-updater:1.2 -t garevans/zerotrust-ip-list-updater:latest .
+        run: docker build -t garevans/zerotrust-ip-list-updater:1.3 -t garevans/zerotrust-ip-list-updater:latest .
+
+      - name: Check root and non-root can read the script and write state
+        run: |
+          img=garevans/zerotrust-ip-list-updater:1.3
+          docker run --rm --entrypoint stat "$img" -c '%a %n' /app/update.sh /app/data
+          for user in 0:0 1000:999; do
+            docker run --rm --user "$user" --entrypoint /bin/sh "$img" -c '
+              test -r /app/update.sh && test -x /app/update.sh &&
+              bash -n /app/update.sh &&
+              echo ok > /app/data/last_ip.txt &&
+              test "$(cat /app/data/last_ip.txt)" = ok
+            '
+          done
